@@ -40,3 +40,26 @@ def read_data(location = "./MSDialog/MSDialog-Intent.json"):
             conversations.append(conversation(i = k, title=current['title'], category=current['category'], dialog_time=current['dialog_time'], frequency=current['frequency'], utterances=utternaces))
     return conversations;
 
+#Content embedding methods
+def q_mark(utterance):
+    u = utterance.utterance
+    return '?' in u
+
+def duplicate(utterance):
+    u = utterance.utterance.lower()
+    return 'same' in u or 'similar' in u
+
+def w5h1(utterance):
+    u = utterance.utterance.lower()
+    w5 = ['what', 'where', 'when', 'why', 'who', 'how']
+    return [w in u for w in w5]
+
+
+#Structural embedding methods
+
+
+
+
+
+#Sentiment embedding methods
+
