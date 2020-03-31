@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sbs
 import json
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from nltk.sentiment.util import demo_liu_hu_lexicon
 
 class conversation:
     def __init__(self, i, title, category, dialog_time, frequency, utterances):
@@ -63,3 +65,23 @@ def w5h1(utterance):
 
 #Sentiment embedding methods
 
+def thank(utterance):
+    u = utterance.utterance.lower()
+    return 'thank' in u
+
+def e_mark(utterance):
+    u = utterance.utterance.lower()
+    return '!' in u
+
+def feedback(utterance):
+    u = utternace.utterance.lower()
+    return 'did not' in u or 'does not' in u
+
+def opinion_lexicon(utterance):
+    u = utterance.utterance.lower()
+    return 1 if 'Positive' in str(demo_liu_hu_lexicon(u)) else 0
+
+def sentiment_score(utterance):
+    u = utterance.utterance.lower()
+    Analyzer = SentimentIntensityAnalyzer()
+    return Analyzer.polarity_scores(text=u)['compound']
