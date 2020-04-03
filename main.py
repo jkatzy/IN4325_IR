@@ -5,6 +5,16 @@ import seaborn as sbs
 import json
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from nltk.sentiment.util import demo_liu_hu_lexicon
+from nltk.corpus import stopwords
+from nltk.stem import SnowballStemmer
+
+from sklearn.multioutput import ClassifierChain
+from sklearn.svm import SVC
+from sklearn.svm import LinearSVC
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+from sklearn.preprocessing import MultiLabelBinarizer
+
 
 class conversation:
     def __init__(self, i, title, category, dialog_time, frequency, utterances):
@@ -14,7 +24,8 @@ class conversation:
         self.dialog_time = dialog_time;
         self.frequency = frequency;
         self.utterances = utterances;
-        
+        self.utterances_count = len(utterances)
+
 class utterance:
     def __init__(self, i, utterance_pos, actor_type, user_id, utterance, vote, utterance_time, affiliation, is_answer, tags):
         self.i = i;
@@ -42,7 +53,7 @@ def read_data(location = "./MSDialog/MSDialog-Intent.json"):
             conversations.append(conversation(i = k, title=current['title'], category=current['category'], dialog_time=current['dialog_time'], frequency=current['frequency'], utterances=utternaces))
     return conversations;
 
-#Content embedding methods
+# Content embedding methods
 def q_mark(utterance):
     u = utterance.utterance
     return '?' in u
@@ -57,13 +68,28 @@ def w5h1(utterance):
     return [w in u for w in w5]
 
 
-#Structural embedding methods
+# Structural embedding methods
+def norm_abs_pos(conversation, utterance):
+    return utterance.utterance_pos/conversation.utterances_count
 
 
+def length(utterance):
+    return len([w for w in utterance.utterance.split() if w not in stopwords.words('english')])
 
 
+def len_uni(utterance):
+    return len(set(w for w in utterance.utterance.split() if w not in stopwords.words('english')))
 
-#Sentiment embedding methods
+
+def len_stem(utterance):
+    stemmer = SnowballStemmer('english')
+    return len(set(stemmer.stem(w) for w in utterance.utterance.split() if w not in stopwords.words('english')))
+
+
+def is_starter(utterance):
+    return utterance.actor_type == 'User'
+
+# Sentiment embedding methods
 
 def thank(utterance):
     u = utterance.utterance.lower()
@@ -74,7 +100,7 @@ def e_mark(utterance):
     return '!' in u
 
 def feedback(utterance):
-    u = utternace.utterance.lower()
+    u = utterance.utterance.lower()
     return 'did not' in u or 'does not' in u
 
 def opinion_lexicon(utterance):
@@ -85,3 +111,30 @@ def sentiment_score(utterance):
     u = utterance.utterance.lower()
     Analyzer = SentimentIntensityAnalyzer()
     return Analyzer.polarity_scores(text=u)['compound']
+
+
+def combine_structural(conversations):
+    x = []
+    y = []
+    conv_count = len(conversations)
+
+    for i, c in enumerate(conversations):
+        for u in c.utterances:
+            x.append([u.utterance_pos, norm_abs_pos(c, u), length(u), len_uni(u), len_stem(u)])
+            y.append(u.tags)
+        print('\r>>>> {}/{} done...'.format((i + 1), conv_count), end='')
+    return np.asarray(x), np.asarray(y)
+
+
+data = read_data()
+
+X, y = combine_structural(data)
+y = MultiLabelBinarizer().fit_transform(y)
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.2)
+
+model = ClassifierChain(LinearSVC(max_iter=100000, fit_intercept=True))
+model.fit(X_train, y_train)
+pred = model.predict(X_test)
+acc = accuracy_score(y_test, pred)
+print(f"Accuracy: {acc}")
