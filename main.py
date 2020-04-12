@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sbs
+import os
 import json
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from nltk.sentiment.util import demo_liu_hu_lexicon
@@ -13,7 +14,15 @@ from sklearn.svm import SVC
 from sklearn.svm import LinearSVC
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+from sklearn.preprocessing import label_binarize
 from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from skmultilearn.adapt import MLkNN
+from sklearn.datasets import fetch_openml
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import jaccard_score
 
 
 class conversation:
@@ -37,7 +46,7 @@ class utterance:
         self.utterance_time = utterance_time;
         self.affiliation = affiliation;
         self.is_answer = is_answer;
-        self.tags = [t for t in tags.split(" ")];
+        self.tags = [t for t in tags.strip().split(" ")];
 
 
 def read_data(location = "./MSDialog/MSDialog-Intent.json"):
@@ -121,20 +130,35 @@ def combine_structural(conversations):
     for i, c in enumerate(conversations):
         for u in c.utterances:
             x.append([u.utterance_pos, norm_abs_pos(c, u), length(u), len_uni(u), len_stem(u)])
+            #x.append([thank(u), e_mark(u), feedback(u), opinion_lexicon(u), sentiment_score(u)])
             y.append(u.tags)
         print('\r>>>> {}/{} done...'.format((i + 1), conv_count), end='')
     return np.asarray(x), np.asarray(y)
 
 
-data = read_data()
+def load_embeddings(group):
+    if os.path.exists('embeddings/' + group + '.npz'):
+        data = np.load('embeddings/' + group + '.npz', allow_pickle=True)
+        X = data['X']
+        y = data['y']
+    else:
+        data = read_data('/media/nommoinn/New Volume/veci/MSDialog/MSDialog-Intent.json')
+        X, y = combine_structural(data)
+        #y = label_binarize(y, classes=['OQ', 'RQ', 'CQ', 'FD', 'FQ', 'IR', 'PA', 'PF', 'NF', 'GG', 'JK', 'OO'])
+        y = MultiLabelBinarizer().fit_transform(y)
+        np.savez('embeddings/' + group, X=X, y=y)
+    return X, y
 
-X, y = combine_structural(data)
-y = MultiLabelBinarizer().fit_transform(y)
 
+X, y = load_embeddings('structural')
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.2)
 
-model = ClassifierChain(LinearSVC(max_iter=100000, fit_intercept=True))
+#model = ClassifierChain(LinearSVC(C=1, max_iter=1000, fit_intercept=True))
+#model = ClassifierChain(AdaBoostClassifier())
+model = RandomForestClassifier()
+#model = MLkNN(k=3, s=0.1)
+
 model.fit(X_train, y_train)
 pred = model.predict(X_test)
-acc = accuracy_score(y_test, pred)
+acc = jaccard_score(y_test, pred, average='samples')
 print(f"Accuracy: {acc}")
