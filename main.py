@@ -22,10 +22,12 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
-from skmultilearn.adapt import MLkNN
+from sklearn.model_selection import RandomizedSearchCV
+#from skmultilearn.adapt import MLkNN
 from sklearn.datasets import fetch_openml
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import jaccard_score
+from sklearn.metrics import classification_report
 
 
 class conversation:
@@ -181,6 +183,13 @@ def combine_sentimental(conversations):
     return np.asarray(x), np.asarray(y)
 
 
+def combine_str_sent():
+    X_str = np.load('embeddings/structural.npy', allow_pickle=True)
+    X_sen = np.load('embeddings/sentimental.npy', allow_pickle=True)
+    y = np.load('embeddings/labels.npy', allow_pickle=True)
+    return np.hstack((X_str, X_sen)), y
+
+
 def load_embeddings(group):
     if os.path.exists('embeddings/' + group + '.npy'):
         X = np.load('embeddings/' + group + '.npy', allow_pickle=True)
@@ -199,15 +208,24 @@ def load_embeddings(group):
     return X, y
 
 
-X, y = load_embeddings('structural')
+#X, y = load_embeddings('sentimental')
+X, y = combine_str_sent()
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.2)
 
 #model = ClassifierChain(LinearSVC(C=1, max_iter=1000, fit_intercept=True))
 #model = ClassifierChain(AdaBoostClassifier())
-model = RandomForestClassifier()
 #model = MLkNN(k=3, s=0.1)
+
+
+model = ClassifierChain(RandomForestClassifier(
+    n_estimators=1500,
+    min_samples_split=7,
+    min_samples_leaf=7,
+    max_features='sqrt'
+))
 
 model.fit(X_train, y_train)
 pred = model.predict(X_test)
+print(classification_report(y_test, pred))
 acc = jaccard_score(y_test, pred, average='samples')
 print(f"Accuracy: {acc}")
