@@ -2,11 +2,14 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sbs
+from collections import defaultdict
 import os
 import json
+import random
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
-from nltk.sentiment.util import demo_liu_hu_lexicon
+from nltk.tokenize import treebank
 from nltk.corpus import stopwords
+from nltk.corpus import opinion_lexicon
 from nltk.stem import SnowballStemmer
 
 from sklearn.multioutput import ClassifierChain
@@ -41,7 +44,7 @@ class utterance:
         self.utterance_pos = utterance_pos;
         self.actor_type = actor_type;
         self.user_id = user_id;
-        self.utterance = utterance;
+        self.utterance = utterance.lower();
         self.vote = vote;
         self.utterance_time = utterance_time;
         self.affiliation = affiliation;
@@ -90,63 +93,109 @@ def len_uni(utterance):
     return len(set(w for w in utterance.utterance.split() if w not in stopwords.words('english')))
 
 
-def len_stem(utterance):
-    stemmer = SnowballStemmer('english')
+def len_stem(stemmer, utterance):
     return len(set(stemmer.stem(w) for w in utterance.utterance.split() if w not in stopwords.words('english')))
 
 
 def is_starter(utterance):
     return utterance.actor_type == 'User'
 
-# Sentiment embedding methods
 
+# Sentiment embedding methods
 def thank(utterance):
-    u = utterance.utterance.lower()
-    return 'thank' in u
+    return 'thank' in utterance.utterance
+
 
 def e_mark(utterance):
-    u = utterance.utterance.lower()
-    return '!' in u
+    return '!' in utterance.utterance
+
 
 def feedback(utterance):
-    u = utterance.utterance.lower()
-    return 'did not' in u or 'does not' in u
+    return 'did not' in utterance.utterance or 'does not' in utterance.utterance
 
-def opinion_lexicon(utterance):
-    u = utterance.utterance.lower()
-    return 1 if 'Positive' in str(demo_liu_hu_lexicon(u)) else 0
 
-def sentiment_score(utterance):
-    u = utterance.utterance.lower()
-    Analyzer = SentimentIntensityAnalyzer()
-    return Analyzer.polarity_scores(text=u)['compound']
+def opinion_lex(tokenizer, utterance):
+    pos = 0
+    neg = 0
+    for word in tokenizer.tokenize(utterance.utterance):
+        pos += word in opinion_lexicon.positive()
+        neg += word in opinion_lexicon.negative()
+
+    return pos, neg
+
+
+def sentiment_score(analyzer, utterance):
+    scores = analyzer.polarity_scores(text=utterance.utterance)
+    return scores['neg'], scores['neu'], scores['pos']
+
+
+def remove_junk_labels(labels):
+    if len(labels) > 1 and 'GG' in labels:
+        labels.remove('GG')
+    if len(labels) > 1 and 'O' in labels:
+        labels.remove('O')
+    if len(labels) > 1 and 'JK' in labels:
+        labels.remove('JK')
+    #return labels
+
+
+def preprocess_labels(y):
+    u, count = np.unique(y, return_counts=True)
+    count_sort_ind = np.argsort(-count)[:32]
+    label_dict = defaultdict(int, dict.fromkeys(map(str, list(u[count_sort_ind])), 1))
+
+    for i in range(len(y)):
+        if not label_dict[str(y[i])]:
+            y[i] = [random.choice(y[i])]
+    return y
 
 
 def combine_structural(conversations):
     x = []
     y = []
     conv_count = len(conversations)
+    stemmer = SnowballStemmer('english')
 
     for i, c in enumerate(conversations):
         for u in c.utterances:
-            x.append([u.utterance_pos, norm_abs_pos(c, u), length(u), len_uni(u), len_stem(u)])
-            #x.append([thank(u), e_mark(u), feedback(u), opinion_lexicon(u), sentiment_score(u)])
+            remove_junk_labels(u.tags)
             y.append(u.tags)
+            x.append([u.utterance_pos, norm_abs_pos(c, u), length(u), len_uni(u), len_stem(stemmer, u), is_starter(u)])
+        print('\r>>>> {}/{} done...'.format((i + 1), conv_count), end='')
+    return np.asarray(x), np.asarray(y)
+
+
+def combine_sentimental(conversations):
+    x = []
+    y = []
+    conv_count = len(conversations)
+    analyzer = SentimentIntensityAnalyzer()
+    tokenizer = treebank.TreebankWordTokenizer()
+
+    for i, c in enumerate(conversations):
+        for u in c.utterances:
+            remove_junk_labels(u.tags)
+            y.append(u.tags)
+            x.append([thank(u), e_mark(u), feedback(u), *sentiment_score(analyzer, u), *opinion_lex(tokenizer, u)])
         print('\r>>>> {}/{} done...'.format((i + 1), conv_count), end='')
     return np.asarray(x), np.asarray(y)
 
 
 def load_embeddings(group):
-    if os.path.exists('embeddings/' + group + '.npz'):
-        data = np.load('embeddings/' + group + '.npz', allow_pickle=True)
-        X = data['X']
-        y = data['y']
+    if os.path.exists('embeddings/' + group + '.npy'):
+        X = np.load('embeddings/' + group + '.npy', allow_pickle=True)
+        y = np.load('embeddings/labels.npy', allow_pickle=True)
     else:
         data = read_data('/media/nommoinn/New Volume/veci/MSDialog/MSDialog-Intent.json')
-        X, y = combine_structural(data)
+        if group == 'structural':
+            X, y = combine_structural(data)
+        elif group == 'sentimental':
+            X, y = combine_sentimental(data)
         #y = label_binarize(y, classes=['OQ', 'RQ', 'CQ', 'FD', 'FQ', 'IR', 'PA', 'PF', 'NF', 'GG', 'JK', 'OO'])
+        y = preprocess_labels(y)
         y = MultiLabelBinarizer().fit_transform(y)
-        np.savez('embeddings/' + group, X=X, y=y)
+        np.save('embeddings/' + group, X)
+        np.save('embeddings/labels.npy', y)
     return X, y
 
 
