@@ -11,7 +11,13 @@ from nltk.tokenize import treebank
 from nltk.corpus import stopwords
 from nltk.corpus import opinion_lexicon
 from nltk.stem import SnowballStemmer
+from nltk.tokenize import word_tokenize
+from collections import Counter
 
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.feature_extraction.text import CountVectorizer
+from scipy.spatial import distance
 from sklearn.multioutput import ClassifierChain
 from sklearn.svm import SVC
 from sklearn.svm import LinearSVC
@@ -68,6 +74,119 @@ def read_data(location = "./MSDialog/MSDialog-Intent.json"):
     return conversations;
 
 # Content embedding methods
+# Content embedding methods
+# Word tokenizer with punctuation extraction
+def tokenizer(text):
+    words = word_tokenize(text)
+    words= [word.lower() for word in words if word.isalpha()]
+    return words
+    
+# Content embedding methods
+    
+#Embed the entire corpus as tf-idf 
+def idf_embedding():
+    idf_corpus = []
+    corpus = read_data(location = "./MSDialog/MSDialog-Intent.json")
+
+    for i,c in enumerate(corpus):
+        for u in (c.utterances):
+            idf_corpus.append(c.title)
+            idf_corpus.append(u.utterance)
+    
+    Vectorizer = CountVectorizer(tokenizer=tokenizer, stop_words='english')
+    tf_idf = Vectorizer.fit_transform(idf_corpus)
+    transformer = TfidfTransformer()
+    transformed_weights = transformer.fit_transform(tf_idf)
+    weights = np.asarray(transformed_weights.mean(axis=0)).ravel().tolist()
+    
+    weights_df = pd.DataFrame({'word': Vectorizer.get_feature_names(), 'weight': weights})
+    #print(weights_df)
+    
+    return weights_df
+
+weights_df = idf_embedding()
+
+#Compute the final similarity matrices
+def cosine_similarity_title(conversation, weights_df):
+    utter = []
+    title = []
+    c = conversation
+    #Get titles, utterances and dialogs for conversations
+    for u in (c.utterances):
+        utter = u.utterance
+    title = c.title
+    title_sim = my_vectors(title, utter, weights_df)
+    #print(my_vectors(title, utter, weights_df))    
+    
+    return title_sim
+
+#Compute the final similarity matrices
+def cosine_similarity_dialog(c, weights_df):
+    utter = []
+    dialog = []
+    dialog_sim = 0
+    #Get titles, utterances and dialogs for conversations
+    for u in (c.utterances):
+        utter = u.utterance
+        if(u.utterance_pos == 1):            
+            dialog = u.utterance            
+            dialog_sim = my_vectors(dialog, utter, weights_df)  
+    return dialog_sim
+
+def build_my_vectors(tokenized_x, tokenized_y, weights_df):
+    
+    counter1 = Counter(tokenized_x[0])
+    counter2 = Counter(tokenized_y[0])    
+    vector1 = []
+    vector2 = []
+       
+    for item in counter1.keys():   
+        w = weights_df.loc[weights_df['word']==item, 'weight'].tolist()
+        if not w :
+            continue
+        else :
+            counter1[item] *= w    
+            
+    for item in counter2.keys():
+        w = (weights_df.loc[weights_df['word']==item, 'weight'].tolist())
+        if not w :
+            continue 
+        else :
+            counter2[item] *= w      
+    
+    for item in counter1.keys():
+        for item1 in counter2.keys():
+            if(item == item1):
+                vector1.append(counter1[item])    
+                vector2.append(counter2[item])
+    
+    #print(vector1, vector2) 
+    return vector1, vector2
+
+#Compute the cosine similarity between two vectors
+def tokenize_utterances(x):
+    #Tokenize utterances, titles and dialogs
+    tokenized_array = [tokenizer(x)] 
+    
+    return tokenized_array
+
+
+def my_vectors(x, y, weights_df):
+    tokenized_x = tokenize_utterances(x)
+    tokenized_y = tokenize_utterances(y)
+    #Build similarity vectors for title, and utterance
+    vector1, vector2 = build_my_vectors(tokenized_x, tokenized_y, weights_df)    
+    
+    #Build similarity vectors for 
+    try : 
+        sim = 1 - distance.cosine(vector1,vector2)
+        if (np.isnan(sim)):
+            sim = 0
+    except:       
+        sim = 0
+    #print(sim)
+    return sim
+
 def q_mark(utterance):
     u = utterance.utterance
     return '?' in u
@@ -151,6 +270,24 @@ def preprocess_labels(y):
             y[i] = [random.choice(y[i])]
     return y
 
+# Combine Content embedding methods
+# Note : if there is an error, try commenting out dialog on line 282, and 
+#    remove dialog from line 287. Then run it again. And tell me, i will fix it. 
+
+def combine_content(conversations):
+    x = []
+    y = []
+    conv_count = len(conversations)
+    
+    for i, c in enumerate(conversations):
+        title = cosine_similarity_title(c, weights_df) 
+        dialog = cosine_similarity_dialog(c, weights_df) 
+        for u in c.utterances:
+            remove_junk_labels(u.tags)
+            y.append(u.tags)
+            x.append([q_mark(u),duplicate(u), title, dialog])
+        print('\r>>>> {}/{} done...'.format((i + 1), conv_count), end='')
+    return np.asarray(x), np.asarray(y)
 
 def combine_structural(conversations):
     x = []
@@ -198,6 +335,8 @@ def load_embeddings(group):
         data = read_data('/media/nommoinn/New Volume/veci/MSDialog/MSDialog-Intent.json')
         if group == 'structural':
             X, y = combine_structural(data)
+        if group == 'content':
+            X, y = combine_content(data)
         elif group == 'sentimental':
             X, y = combine_sentimental(data)
         #y = label_binarize(y, classes=['OQ', 'RQ', 'CQ', 'FD', 'FQ', 'IR', 'PA', 'PF', 'NF', 'GG', 'JK', 'OO'])
@@ -208,8 +347,8 @@ def load_embeddings(group):
     return X, y
 
 
-#X, y = load_embeddings('sentimental')
-X, y = combine_str_sent()
+X, y = load_embeddings('content')
+#X, y = combine_str_sent()
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.2)
 
 #model = ClassifierChain(LinearSVC(C=1, max_iter=1000, fit_intercept=True))
