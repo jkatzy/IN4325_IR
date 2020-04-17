@@ -232,7 +232,7 @@ def load_labels():
     if os.path.exists('features/labels.npy'):
         y = np.load('features/labels.npy', allow_pickle=True)
     else:
-        data = read_data('/media/nommoinn/New Volume/veci/MSDialog/MSDialog-Intent.json')
+        data = read_data('./MSDialog/MSDialog-Intent.json')
         conv_count = len(data)
         y = []
         for i, c in enumerate(data):
