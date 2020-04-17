@@ -29,25 +29,28 @@ from sklearn.ensemble import AdaBoostClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import RandomizedSearchCV
-#from skmultilearn.adapt import MLkNN
+# from skmultilearn.adapt import MLkNN
 from sklearn.datasets import fetch_openml
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import jaccard_score
 from sklearn.metrics import classification_report
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 class conversation:
     def __init__(self, i, title, category, dialog_time, frequency, utterances):
         self.i = i;
-        self.title = title;
+        self.title = title.lower();
         self.category = category;
         self.dialog_time = dialog_time;
         self.frequency = frequency;
         self.utterances = utterances;
         self.utterances_count = len(utterances)
 
+
 class utterance:
-    def __init__(self, i, utterance_pos, actor_type, user_id, utterance, vote, utterance_time, affiliation, is_answer, tags):
+    def __init__(self, i, utterance_pos, actor_type, user_id, utterance, vote, utterance_time, affiliation, is_answer,
+                 tags):
         self.i = i;
         self.utterance_pos = utterance_pos;
         self.actor_type = actor_type;
@@ -60,7 +63,7 @@ class utterance:
         self.tags = [t for t in tags.strip().split(" ")];
 
 
-def read_data(location = "./MSDialog/MSDialog-Intent.json"):
+def read_data(location="./MSDialog/MSDialog-Intent.json"):
     conversations = [];
     with open(location) as json_file:
         data = json.load(json_file)
@@ -69,141 +72,50 @@ def read_data(location = "./MSDialog/MSDialog-Intent.json"):
             utternaces = []
             utterances_data = current['utterances']
             for u in utterances_data:
-                utternaces.append(utterance(i = u['id'], utterance_pos=u['utterance_pos'], actor_type=u['actor_type'], user_id=u['user_id'], utterance=u['utterance'], vote=u['vote'], utterance_time=u['utterance_time'], affiliation=u['affiliation'], is_answer=u['is_answer'], tags=u['tags']))
-            conversations.append(conversation(i = k, title=current['title'], category=current['category'], dialog_time=current['dialog_time'], frequency=current['frequency'], utterances=utternaces))
+                utternaces.append(utterance(i=u['id'], utterance_pos=u['utterance_pos'], actor_type=u['actor_type'],
+                                            user_id=u['user_id'], utterance=u['utterance'], vote=u['vote'],
+                                            utterance_time=u['utterance_time'], affiliation=u['affiliation'],
+                                            is_answer=u['is_answer'], tags=u['tags']))
+            conversations.append(conversation(i=k, title=current['title'], category=current['category'],
+                                              dialog_time=current['dialog_time'], frequency=current['frequency'],
+                                              utterances=utternaces))
     return conversations;
 
-# Content embedding methods
-# Content embedding methods
-# Word tokenizer with punctuation extraction
-def tokenizer(text):
-    words = word_tokenize(text)
-    words= [word.lower() for word in words if word.isalpha()]
-    return words
-    
-# Content embedding methods
-    
-#Embed the entire corpus as tf-idf 
-def idf_embedding():
-    idf_corpus = []
-    corpus = read_data(location = "./MSDialog/MSDialog-Intent.json")
 
-    for i,c in enumerate(corpus):
-        for u in (c.utterances):
+# Embed the entire corpus as tf-idf
+def idf_embedding(data):
+    idf_corpus = []
+    tok = treebank.TreebankWordTokenizer()
+
+    for i, c in enumerate(data):
+        for u in c.utterances:
             idf_corpus.append(c.title)
             idf_corpus.append(u.utterance)
-    
-    Vectorizer = CountVectorizer(tokenizer=tokenizer, stop_words='english')
-    tf_idf = Vectorizer.fit_transform(idf_corpus)
-    transformer = TfidfTransformer()
-    transformed_weights = transformer.fit_transform(tf_idf)
-    weights = np.asarray(transformed_weights.mean(axis=0)).ravel().tolist()
-    
-    weights_df = pd.DataFrame({'word': Vectorizer.get_feature_names(), 'weight': weights})
-    #print(weights_df)
-    
-    return weights_df
 
-weights_df = idf_embedding()
+    vectorizer = TfidfVectorizer(tokenizer=tok.tokenize, stop_words='english')
+    vectorizer.fit(idf_corpus)
+    return vectorizer
 
-#Compute the final similarity matrices
-def cosine_similarity_title(conversation, weights_df):
-    utter = []
-    title = []
-    c = conversation
-    #Get titles, utterances and dialogs for conversations
-    for u in (c.utterances):
-        utter = u.utterance
-    title = c.title
-    title_sim = my_vectors(title, utter, weights_df)
-    #print(my_vectors(title, utter, weights_df))    
-    
-    return title_sim
-
-#Compute the final similarity matrices
-def cosine_similarity_dialog(c, weights_df):
-    utter = []
-    dialog = []
-    dialog_sim = 0
-    #Get titles, utterances and dialogs for conversations
-    for u in (c.utterances):
-        utter = u.utterance
-        if(u.utterance_pos == 1):            
-            dialog = u.utterance            
-            dialog_sim = my_vectors(dialog, utter, weights_df)  
-    return dialog_sim
-
-def build_my_vectors(tokenized_x, tokenized_y, weights_df):
-    
-    counter1 = Counter(tokenized_x[0])
-    counter2 = Counter(tokenized_y[0])    
-    vector1 = []
-    vector2 = []
-       
-    for item in counter1.keys():   
-        w = weights_df.loc[weights_df['word']==item, 'weight'].tolist()
-        if not w :
-            continue
-        else :
-            counter1[item] *= w    
-            
-    for item in counter2.keys():
-        w = (weights_df.loc[weights_df['word']==item, 'weight'].tolist())
-        if not w :
-            continue 
-        else :
-            counter2[item] *= w      
-    
-    for item in counter1.keys():
-        for item1 in counter2.keys():
-            if(item == item1):
-                vector1.append(counter1[item])    
-                vector2.append(counter2[item])
-    
-    #print(vector1, vector2) 
-    return vector1, vector2
-
-#Compute the cosine similarity between two vectors
-def tokenize_utterances(x):
-    #Tokenize utterances, titles and dialogs
-    tokenized_array = [tokenizer(x)] 
-    
-    return tokenized_array
-
-
-def my_vectors(x, y, weights_df):
-    tokenized_x = tokenize_utterances(x)
-    tokenized_y = tokenize_utterances(y)
-    #Build similarity vectors for title, and utterance
-    vector1, vector2 = build_my_vectors(tokenized_x, tokenized_y, weights_df)    
-    
-    #Build similarity vectors for 
-    try : 
-        sim = 1 - distance.cosine(vector1,vector2)
-        if (np.isnan(sim)):
-            sim = 0
-    except:       
-        sim = 0
-    #print(sim)
-    return sim
 
 def q_mark(utterance):
     u = utterance.utterance
     return '?' in u
 
+
 def duplicate(utterance):
-    u = utterance.utterance.lower()
+    u = utterance.utterance
     return 'same' in u or 'similar' in u
 
+
 def w5h1(utterance):
-    u = utterance.utterance.lower()
+    u = utterance.utterance
     w5 = ['what', 'where', 'when', 'why', 'who', 'how']
     return [w in u for w in w5]
 
 
 # Structural embedding methods
 def norm_abs_pos(conversation, utterance):
-    return utterance.utterance_pos/conversation.utterances_count
+    return utterance.utterance_pos / conversation.utterances_count
 
 
 def length(utterance):
@@ -250,6 +162,8 @@ def sentiment_score(analyzer, utterance):
     return scores['neg'], scores['neu'], scores['pos']
 
 
+# Label preprocess
+
 def remove_junk_labels(labels):
     if len(labels) > 1 and 'GG' in labels:
         labels.remove('GG')
@@ -257,7 +171,7 @@ def remove_junk_labels(labels):
         labels.remove('O')
     if len(labels) > 1 and 'JK' in labels:
         labels.remove('JK')
-    #return labels
+    # return labels
 
 
 def preprocess_labels(y):
@@ -270,90 +184,108 @@ def preprocess_labels(y):
             y[i] = [random.choice(y[i])]
     return y
 
+
 # Combine Content embedding methods
 # Note : if there is an error, try commenting out dialog on line 282, and 
 #    remove dialog from line 287. Then run it again. And tell me, i will fix it. 
 
 def combine_content(conversations):
     x = []
-    y = []
     conv_count = len(conversations)
-    
+    vectorizer = idf_embedding(conversations)
+
     for i, c in enumerate(conversations):
-        title = cosine_similarity_title(c, weights_df) 
-        dialog = cosine_similarity_dialog(c, weights_df) 
+        dialog = ' '.join([u.utterance for u in c.utterances])
+        dialog_vec = vectorizer.transform([dialog]).toarray()
+        init_vec = vectorizer.transform([c.utterances[0].utterance]).toarray()
         for u in c.utterances:
-            remove_junk_labels(u.tags)
-            y.append(u.tags)
-            x.append([q_mark(u),duplicate(u), title, dialog])
+            u_vec = vectorizer.transform([u.utterance]).toarray()
+            x.append([q_mark(u), duplicate(u), *w5h1(u), cosine_similarity(u_vec, init_vec)[0][0], cosine_similarity(u_vec, dialog_vec)[0][0]])
         print('\r>>>> {}/{} done...'.format((i + 1), conv_count), end='')
-    return np.asarray(x), np.asarray(y)
+    return np.asarray(x)
+
 
 def combine_structural(conversations):
     x = []
-    y = []
     conv_count = len(conversations)
     stemmer = SnowballStemmer('english')
 
     for i, c in enumerate(conversations):
         for u in c.utterances:
-            remove_junk_labels(u.tags)
-            y.append(u.tags)
             x.append([u.utterance_pos, norm_abs_pos(c, u), length(u), len_uni(u), len_stem(stemmer, u), is_starter(u)])
         print('\r>>>> {}/{} done...'.format((i + 1), conv_count), end='')
-    return np.asarray(x), np.asarray(y)
+    return np.asarray(x)
 
 
 def combine_sentimental(conversations):
     x = []
-    y = []
     conv_count = len(conversations)
     analyzer = SentimentIntensityAnalyzer()
-    tokenizer = treebank.TreebankWordTokenizer()
+    tok = treebank.TreebankWordTokenizer()
 
     for i, c in enumerate(conversations):
         for u in c.utterances:
-            remove_junk_labels(u.tags)
-            y.append(u.tags)
-            x.append([thank(u), e_mark(u), feedback(u), *sentiment_score(analyzer, u), *opinion_lex(tokenizer, u)])
+            x.append([thank(u), e_mark(u), feedback(u), *sentiment_score(analyzer, u), *opinion_lex(tok, u)])
         print('\r>>>> {}/{} done...'.format((i + 1), conv_count), end='')
-    return np.asarray(x), np.asarray(y)
+    return np.asarray(x)
 
 
-def combine_str_sent():
-    X_str = np.load('embeddings/structural.npy', allow_pickle=True)
-    X_sen = np.load('embeddings/sentimental.npy', allow_pickle=True)
+def combine_2_embed(group1, group2):
+    X_g1 = np.load('embeddings/' + group1 + '.npy', allow_pickle=True)
+    X_g2 = np.load('embeddings/' + group2 + '.npy', allow_pickle=True)
     y = np.load('embeddings/labels.npy', allow_pickle=True)
-    return np.hstack((X_str, X_sen)), y
+    return np.hstack((X_g1, X_g2)), y
+
+
+def combine_3_embed(group1, group2, group3):
+    X_g1 = np.load('embeddings/' + group1 + '.npy', allow_pickle=True)
+    X_g2 = np.load('embeddings/' + group2 + '.npy', allow_pickle=True)
+    X_g3 = np.load('embeddings/' + group3 + '.npy', allow_pickle=True)
+    y = np.load('embeddings/labels.npy', allow_pickle=True)
+    return np.hstack((X_g1, X_g2, X_g3)), y
+
+
+def load_labels():
+    if os.path.exists('embeddings/labels.npy'):
+        y = np.load('embeddings/labels.npy', allow_pickle=True)
+    else:
+        data = read_data('/media/nommoinn/New Volume/veci/MSDialog/MSDialog-Intent.json')
+        conv_count = len(data)
+        y = []
+        for i, c in enumerate(data):
+            for u in c.utterances:
+                remove_junk_labels(u.tags)
+                y.append(u.tags)
+            print('\r>>>> {}/{} done...'.format((i + 1), conv_count), end='')
+        y = preprocess_labels(y)
+        y = MultiLabelBinarizer().fit_transform(y)
+        np.save('embeddings/labels', y)
+    return y
 
 
 def load_embeddings(group):
     if os.path.exists('embeddings/' + group + '.npy'):
         X = np.load('embeddings/' + group + '.npy', allow_pickle=True)
-        y = np.load('embeddings/labels.npy', allow_pickle=True)
     else:
         data = read_data('/media/nommoinn/New Volume/veci/MSDialog/MSDialog-Intent.json')
         if group == 'structural':
-            X, y = combine_structural(data)
+            X = combine_structural(data)
         if group == 'content':
-            X, y = combine_content(data)
+            X = combine_content(data)
         elif group == 'sentimental':
-            X, y = combine_sentimental(data)
-        #y = label_binarize(y, classes=['OQ', 'RQ', 'CQ', 'FD', 'FQ', 'IR', 'PA', 'PF', 'NF', 'GG', 'JK', 'OO'])
-        y = preprocess_labels(y)
-        y = MultiLabelBinarizer().fit_transform(y)
+            X = combine_sentimental(data)
         np.save('embeddings/' + group, X)
-        np.save('embeddings/labels.npy', y)
-    return X, y
+    return X
 
 
-X, y = load_embeddings('content')
-#X, y = combine_str_sent()
+X = load_embeddings('content')
+y = load_labels()
+# X, y = combine_str_sent()
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.2)
 
-#model = ClassifierChain(LinearSVC(C=1, max_iter=1000, fit_intercept=True))
-#model = ClassifierChain(AdaBoostClassifier())
-#model = MLkNN(k=3, s=0.1)
+# model = ClassifierChain(LinearSVC(C=1, max_iter=1000, fit_intercept=True))
+# model = ClassifierChain(AdaBoostClassifier())
+# model = MLkNN(k=3, s=0.1)
 
 
 model = ClassifierChain(RandomForestClassifier(
