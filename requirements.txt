@@ -1,4 +1,4 @@
-numpy >= 1.18.2
-nltk >= 3.5
+numpy
+nltk
 sklearn
 scikit-multilearn
