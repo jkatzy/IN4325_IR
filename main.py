@@ -18,7 +18,7 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV
-# from skmultilearn.adapt import MLkNN
+from skmultilearn.adapt import MLkNN
 from sklearn.metrics import jaccard_score
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import precision_recall_fscore_support
@@ -250,7 +250,7 @@ def load_embeddings(group):
     if os.path.exists('features/' + group + '.npy'):
         X = np.load('features/' + group + '.npy', allow_pickle=True)
     else:
-        data = read_data('/media/nommoinn/New Volume/veci/MSDialog/MSDialog-Intent.json')
+        data = read_data('./MSDialog/MSDialog-Intent.json')
         if group == 'structural':
             X = combine_structural(data)
         if group == 'content':
