@@ -21,7 +21,7 @@ The dataset used in this project is the [MSDialog](https://ciir.cs.umass.edu/dow
 The **features** folder consists of a dump of the feature extractions conducted in this project. To speed up training, please download them in the same directory as the project. 
 
 # To run project
-Step 1: Download and upzip this repository into a directory
-Step 2: Add the dataset to the same directory
-Step 2: Run *main.py*
+#### Step 1: Download and upzip this repository into a directory
+#### Step 2: Add the dataset to the same directory
+#### Step 2: Run *main.py*
 
